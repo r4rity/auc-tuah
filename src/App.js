@@ -70,9 +70,9 @@ export default function WeaponsSheetApp() {
     return ['Any', ...Array.from(setB).sort()]
   }, [rows])
 
-  const colorOrder = { Yellow: 1, Orange: 2, Red: 3 }
-
   const filtered = useMemo(() => {
+    const colorOrder = { Yellow: 1, Orange: 2, Red: 3 } // moved inside useMemo to fix ESLint
+
     let data = rows
       .filter(r => query ? r.ItemName.toLowerCase().includes(query.toLowerCase()) : true)
       .filter(r => minQuality ? r.Quality >= Number(minQuality) : true)

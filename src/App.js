@@ -17,7 +17,7 @@ export default function WeaponsSheetApp() {
   const [colorFilter, setColorFilter] = useState({ Yellow: true, Orange: true, Red: true });
 
   function parseCSV(csv) {
-    const lines = csv.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    const lines = csv.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     if (!lines.length) return [];
     const delim = lines[0].includes('\t') ? '\t' : ',';
     const headers = lines[0].split(delim).map(h => h.trim());
@@ -31,6 +31,7 @@ export default function WeaponsSheetApp() {
         if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
         obj[h] = v;
       });
+
       obj.Quality = Number(obj.Quality || 0);
       obj.Accuracy = Number(obj.Accuracy || 0);
       obj.Damage = Number(obj.Damage || 0);
@@ -42,23 +43,36 @@ export default function WeaponsSheetApp() {
     });
   }
 
-  function handlePasteOrUpload() { setRows(parseCSV(raw)) }
+  function handlePasteOrUpload() {
+    setRows(parseCSV(raw));
+  }
+
   function reset() {
-    setRaw(''); setRows([]); setQuery(''); setMinQuality(''); setMinAccuracy(''); setMinDamage(''); setMinDefense('');
-    setBonus1Filter('Any'); setBonus2Filter('Any'); setBonus1MinValue(''); setBonus2MinValue('');
+    setRaw('');
+    setRows([]);
+    setQuery('');
+    setMinQuality('');
+    setMinAccuracy('');
+    setMinDamage('');
+    setMinDefense('');
+    setBonus1Filter('Any');
+    setBonus2Filter('Any');
+    setBonus1MinValue('');
+    setBonus2MinValue('');
     setColorFilter({ Yellow: true, Orange: true, Red: true });
-    setSortConfig({ key: '', direction: 'asc' })
+    setSortConfig({ key: '', direction: 'asc' });
   }
 
   useEffect(() => {
-    const sheetURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWH5gVlpnYxhoWAG-1nJbxbHlGSsJ1NwlHjsYsCRf6Lu8WXal172tVV4ypk-LaTO_ANn3-4xvGsZu1/pub?gid=0&single=true&output=csv';
+    const sheetURL =
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWH5gVlpnYxhoWAG-1nJbxbHlGSsJ1NwlHjsYsCRf6Lu8WXal172tVV4ypk-LaTO_ANn3-4xvGsZu1/pub?gid=0&single=true&output=csv';
 
     const fetchData = () => {
       fetch(sheetURL)
         .then(res => res.text())
         .then(data => setRows(parseCSV(data)))
         .catch(err => console.error('Error fetching sheet:', err));
-    }
+    };
 
     fetchData();
     const interval = setInterval(fetchData, 10 * 60 * 1000);
@@ -67,7 +81,10 @@ export default function WeaponsSheetApp() {
 
   const bonusOptions = useMemo(() => {
     const setB = new Set();
-    rows.forEach(r => { if(r.Bonus1Name) setB.add(r.Bonus1Name); if(r.Bonus2Name) setB.add(r.Bonus2Name) });
+    rows.forEach(r => {
+      if (r.Bonus1Name) setB.add(r.Bonus1Name);
+      if (r.Bonus2Name) setB.add(r.Bonus2Name);
+    });
     return ['Any', ...Array.from(setB).sort()];
   }, [rows]);
 
@@ -75,36 +92,72 @@ export default function WeaponsSheetApp() {
 
   const filtered = useMemo(() => {
     let data = rows
-      .filter(r => query ? r.ItemName.toLowerCase().includes(query.toLowerCase()) : true)
-      .filter(r => minQuality ? r.Quality >= Number(minQuality) : true)
-      .filter(r => minAccuracy ? r.Accuracy >= Number(minAccuracy) : true)
-      .filter(r => minDamage ? r.Damage >= Number(minDamage) : true)
-      .filter(r => minDefense ? r.Defense >= Number(minDefense) : true)
-      .filter(r => (bonus1Filter === 'Any' || r.Bonus1Name === bonus1Filter) && (bonus2Filter === 'Any' || r.Bonus2Name === bonus2Filter))
-      .filter(r => bonus1MinValue ? r.Bonus1Value >= Number(bonus1MinValue) : true)
-      .filter(r => bonus2MinValue ? r.Bonus2Value >= Number(bonus2MinValue) : true)
+      // ✅ MULTI-NAME PARTIAL SEARCH
+      .filter(r => {
+        if (!query) return true;
+        const terms = query
+          .split(',')
+          .map(t => t.trim().toLowerCase())
+          .filter(Boolean);
+        return terms.some(term =>
+          r.ItemName.toLowerCase().includes(term)
+        );
+      })
+      .filter(r => (minQuality ? r.Quality >= Number(minQuality) : true))
+      .filter(r => (minAccuracy ? r.Accuracy >= Number(minAccuracy) : true))
+      .filter(r => (minDamage ? r.Damage >= Number(minDamage) : true))
+      .filter(r => (minDefense ? r.Defense >= Number(minDefense) : true))
+      .filter(
+        r =>
+          (bonus1Filter === 'Any' || r.Bonus1Name === bonus1Filter) &&
+          (bonus2Filter === 'Any' || r.Bonus2Name === bonus2Filter)
+      )
+      .filter(r => (bonus1MinValue ? r.Bonus1Value >= Number(bonus1MinValue) : true))
+      .filter(r => (bonus2MinValue ? r.Bonus2Value >= Number(bonus2MinValue) : true))
       .filter(r => colorFilter[r.Color]);
 
-    if(sortConfig.key) {
+    if (sortConfig.key) {
       data = [...data].sort((a, b) => {
         let aVal = a[sortConfig.key] ?? 0;
         let bVal = b[sortConfig.key] ?? 0;
-        if(sortConfig.key === 'Color') {
+
+        if (sortConfig.key === 'Color') {
           aVal = colorOrder[a.Color] ?? 0;
           bVal = colorOrder[b.Color] ?? 0;
         }
-        if(aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if(aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+
+        // ✅ DATE SORTING
+        if (sortConfig.key === 'AuctionEnds') {
+          aVal = new Date(a.AuctionEnds).getTime() || 0;
+          bVal = new Date(b.AuctionEnds).getTime() || 0;
+        }
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
-      })
+      });
     }
+
     return data;
-  }, [rows, query, minQuality, minAccuracy, minDamage, minDefense, bonus1Filter, bonus2Filter, bonus1MinValue, bonus2MinValue, sortConfig, colorFilter]);
+  }, [
+    rows,
+    query,
+    minQuality,
+    minAccuracy,
+    minDamage,
+    minDefense,
+    bonus1Filter,
+    bonus2Filter,
+    bonus1MinValue,
+    bonus2MinValue,
+    sortConfig,
+    colorFilter
+  ]);
 
   function formatPrice(p) {
-    if(p >= 1e9) return (p/1e9).toFixed(4).replace(/\.0+$/, '') + 'b';
-    if(p >= 1e6) return (p/1e6).toFixed(4).replace(/\.0+$/, '') + 'm';
-    if(p >= 1e3) return (p/1e3).toFixed(4).replace(/\.0+$/, '') + 'k';
+    if (p >= 1e9) return (p / 1e9).toFixed(4).replace(/\.0+$/, '') + 'b';
+    if (p >= 1e6) return (p / 1e6).toFixed(4).replace(/\.0+$/, '') + 'm';
+    if (p >= 1e3) return (p / 1e3).toFixed(4).replace(/\.0+$/, '') + 'k';
     return p;
   }
 
@@ -112,17 +165,32 @@ export default function WeaponsSheetApp() {
     setSortConfig(prev => ({
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }))
+    }));
   }
 
-  const sortableColumns = ['ItemPrice','Quality','Accuracy','Damage','Defense','Bonus1Value','Bonus2Value','Color'];
+  const sortableColumns = [
+    'ItemPrice',
+    'Quality',
+    'Accuracy',
+    'Damage',
+    'Defense',
+    'Bonus1Value',
+    'Bonus2Value',
+    'Color',
+    'AuctionEnds'
+  ];
 
   return (
     <div className="app-container">
       <h1>Weapons Sheet — UI & Filter</h1>
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <textarea value={raw} onChange={e => setRaw(e.target.value)} placeholder="Paste CSV here. Header line required." style={{ flexGrow: 2, height: '120px', padding: '0.5rem' }} />
+        <textarea
+          value={raw}
+          onChange={e => setRaw(e.target.value)}
+          placeholder="Paste CSV here. Header line required."
+          style={{ flexGrow: 2, height: '120px', padding: '0.5rem' }}
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <button onClick={handlePasteOrUpload}>Load data</button>
           <button onClick={reset}>Reset</button>
@@ -135,12 +203,34 @@ export default function WeaponsSheetApp() {
         <input placeholder="Min Accuracy" value={minAccuracy} onChange={e => setMinAccuracy(e.target.value)} />
         <input placeholder="Min Damage" value={minDamage} onChange={e => setMinDamage(e.target.value)} />
         <input placeholder="Min Defense" value={minDefense} onChange={e => setMinDefense(e.target.value)} />
-        <select value={bonus1Filter} onChange={e => setBonus1Filter(e.target.value)}>{bonusOptions.map(b => <option key={b} value={b}>{b}</option>)}</select>
+
+        <select value={bonus1Filter} onChange={e => setBonus1Filter(e.target.value)}>
+          {bonusOptions.map(b => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+
         <input placeholder="Bonus1 Min Value" value={bonus1MinValue} onChange={e => setBonus1MinValue(e.target.value)} />
-        <select value={bonus2Filter} onChange={e => setBonus2Filter(e.target.value)}>{bonusOptions.map(b => <option key={b} value={b}>{b}</option>)}</select>
+
+        <select value={bonus2Filter} onChange={e => setBonus2Filter(e.target.value)}>
+          {bonusOptions.map(b => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+
         <input placeholder="Bonus2 Min Value" value={bonus2MinValue} onChange={e => setBonus2MinValue(e.target.value)} />
-        {['Yellow','Orange','Red'].map(c => (
-          <label key={c}><input type="checkbox" checked={colorFilter[c]} onChange={e => setColorFilter(prev => ({ ...prev, [c]: e.target.checked }))} /> {c}</label>
+
+        {['Yellow', 'Orange', 'Red'].map(c => (
+          <label key={c}>
+            <input
+              type="checkbox"
+              checked={colorFilter[c]}
+              onChange={e =>
+                setColorFilter(prev => ({ ...prev, [c]: e.target.checked }))
+              }
+            />{' '}
+            {c}
+          </label>
         ))}
       </div>
 
@@ -148,15 +238,36 @@ export default function WeaponsSheetApp() {
         <table>
           <thead>
             <tr>
-              {['ItemName','ItemPrice','Quality','Accuracy','Damage','Defense','Bonus1Name','Bonus1Value','Bonus2Name','Bonus2Value','Color','AuctionEnds'].map(col => (
-                <th key={col} onClick={() => sortableColumns.includes(col) && handleSort(col)}>
-                  {col} {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              {[
+                'ItemName',
+                'ItemPrice',
+                'Quality',
+                'Accuracy',
+                'Damage',
+                'Defense',
+                'Bonus1Name',
+                'Bonus1Value',
+                'Bonus2Name',
+                'Bonus2Value',
+                'Color',
+                'AuctionEnds'
+              ].map(col => (
+                <th
+                  key={col}
+                  onClick={() => sortableColumns.includes(col) && handleSort(col)}
+                >
+                  {col}{' '}
+                  {sortConfig.key === col
+                    ? sortConfig.direction === 'asc'
+                      ? '↑'
+                      : '↓'
+                    : ''}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((r,i) => (
+            {filtered.map((r, i) => (
               <tr key={i}>
                 <td>{r.ItemName}</td>
                 <td>{formatPrice(r.ItemPrice)}</td>

@@ -9,8 +9,8 @@ export default function WeaponsSheetApp() {
   const [minAccuracy, setMinAccuracy] = useState('');
   const [minDamage, setMinDamage] = useState('');
   const [minDefense, setMinDefense] = useState('');
-  const [bonus1Filter, setBonus1Filter] = useState('Any');
-  const [bonus2Filter, setBonus2Filter] = useState('Any');
+  const [bonus1Filter, setBonus1Filter] = useState('');
+  const [bonus2Filter, setBonus2Filter] = useState('');
   const [bonus1MinValue, setBonus1MinValue] = useState('');
   const [bonus2MinValue, setBonus2MinValue] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
@@ -55,8 +55,8 @@ export default function WeaponsSheetApp() {
     setMinAccuracy('');
     setMinDamage('');
     setMinDefense('');
-    setBonus1Filter('Any');
-    setBonus2Filter('Any');
+    setBonus1Filter('');
+    setBonus2Filter('');
     setBonus1MinValue('');
     setBonus2MinValue('');
     setColorFilter({ Yellow: true, Orange: true, Red: true });
@@ -79,19 +79,11 @@ export default function WeaponsSheetApp() {
     return () => clearInterval(interval);
   }, []);
 
-  const bonusOptions = useMemo(() => {
-    const setB = new Set();
-    rows.forEach(r => {
-      if (r.Bonus1Name) setB.add(r.Bonus1Name);
-      if (r.Bonus2Name) setB.add(r.Bonus2Name);
-    });
-    return ['Any', ...Array.from(setB).sort()];
-  }, [rows]);
-
   const colorOrder = { Yellow: 1, Orange: 2, Red: 3 };
 
   const filtered = useMemo(() => {
     let data = rows
+      // ItemName multi-term partial match
       .filter(r => {
         if (!query) return true;
         const terms = query
@@ -102,19 +94,40 @@ export default function WeaponsSheetApp() {
           r.ItemName.toLowerCase().includes(term)
         );
       })
+      // Numeric filters
       .filter(r => (minQuality ? r.Quality >= Number(minQuality) : true))
       .filter(r => (minAccuracy ? r.Accuracy >= Number(minAccuracy) : true))
       .filter(r => (minDamage ? r.Damage >= Number(minDamage) : true))
       .filter(r => (minDefense ? r.Defense >= Number(minDefense) : true))
-      .filter(
-        r =>
-          (bonus1Filter === 'Any' || r.Bonus1Name === bonus1Filter) &&
-          (bonus2Filter === 'Any' || r.Bonus2Name === bonus2Filter)
-      )
+      // Bonus1 multi-term partial match
+      .filter(r => {
+        if (bonus1Filter) {
+          const terms1 = bonus1Filter
+            .split(',')
+            .map(t => t.trim().toLowerCase())
+            .filter(Boolean);
+          if (!terms1.some(t => r.Bonus1Name.toLowerCase().includes(t))) return false;
+        }
+        return true;
+      })
+      // Bonus2 multi-term partial match
+      .filter(r => {
+        if (bonus2Filter) {
+          const terms2 = bonus2Filter
+            .split(',')
+            .map(t => t.trim().toLowerCase())
+            .filter(Boolean);
+          if (!terms2.some(t => r.Bonus2Name.toLowerCase().includes(t))) return false;
+        }
+        return true;
+      })
+      // Min bonus values
       .filter(r => (bonus1MinValue ? r.Bonus1Value >= Number(bonus1MinValue) : true))
       .filter(r => (bonus2MinValue ? r.Bonus2Value >= Number(bonus2MinValue) : true))
+      // Color filter
       .filter(r => colorFilter[r.Color]);
 
+    // Sorting
     if (sortConfig.key) {
       data = [...data].sort((a, b) => {
         let aVal = a[sortConfig.key] ?? 0;
@@ -125,14 +138,11 @@ export default function WeaponsSheetApp() {
           bVal = colorOrder[b.Color] ?? 0;
         }
 
-        // ✅ Custom Date Parsing for AuctionEnds
         if (sortConfig.key === 'AuctionEnds') {
           const parseCustomDate = str => {
-            // str = "07:16:18 - 14/11/25"
             const match = str.match(/(\d{2}):(\d{2}):(\d{2}) - (\d{2})\/(\d{2})\/(\d{2})/);
             if (!match) return 0;
             const [_, h, m, s, d, mo, y] = match;
-            // Create date object
             return new Date(`20${y}-${mo}-${d}T${h}:${m}:${s}`).getTime();
           };
           aVal = parseCustomDate(a.AuctionEnds);
@@ -211,20 +221,18 @@ export default function WeaponsSheetApp() {
         <input placeholder="Min Damage" value={minDamage} onChange={e => setMinDamage(e.target.value)} />
         <input placeholder="Min Defense" value={minDefense} onChange={e => setMinDefense(e.target.value)} />
 
-        <select value={bonus1Filter} onChange={e => setBonus1Filter(e.target.value)}>
-          {bonusOptions.map(b => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-
+        <input
+          placeholder="Bonus1 (comma-separated)"
+          value={bonus1Filter}
+          onChange={e => setBonus1Filter(e.target.value)}
+        />
         <input placeholder="Bonus1 Min Value" value={bonus1MinValue} onChange={e => setBonus1MinValue(e.target.value)} />
 
-        <select value={bonus2Filter} onChange={e => setBonus2Filter(e.target.value)}>
-          {bonusOptions.map(b => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-
+        <input
+          placeholder="Bonus2 (comma-separated)"
+          value={bonus2Filter}
+          onChange={e => setBonus2Filter(e.target.value)}
+        />
         <input placeholder="Bonus2 Min Value" value={bonus2MinValue} onChange={e => setBonus2MinValue(e.target.value)} />
 
         {['Yellow', 'Orange', 'Red'].map(c => (

@@ -92,7 +92,6 @@ export default function WeaponsSheetApp() {
 
   const filtered = useMemo(() => {
     let data = rows
-      // ✅ MULTI-NAME PARTIAL SEARCH
       .filter(r => {
         if (!query) return true;
         const terms = query
@@ -126,10 +125,18 @@ export default function WeaponsSheetApp() {
           bVal = colorOrder[b.Color] ?? 0;
         }
 
-        // ✅ DATE SORTING
+        // ✅ Custom Date Parsing for AuctionEnds
         if (sortConfig.key === 'AuctionEnds') {
-          aVal = new Date(a.AuctionEnds).getTime() || 0;
-          bVal = new Date(b.AuctionEnds).getTime() || 0;
+          const parseCustomDate = str => {
+            // str = "07:16:18 - 14/11/25"
+            const match = str.match(/(\d{2}):(\d{2}):(\d{2}) - (\d{2})\/(\d{2})\/(\d{2})/);
+            if (!match) return 0;
+            const [_, h, m, s, d, mo, y] = match;
+            // Create date object
+            return new Date(`20${y}-${mo}-${d}T${h}:${m}:${s}`).getTime();
+          };
+          aVal = parseCustomDate(a.AuctionEnds);
+          bVal = parseCustomDate(b.AuctionEnds);
         }
 
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -181,7 +188,7 @@ export default function WeaponsSheetApp() {
   ];
 
   return (
-    <div className="app-container">
+    <div className="app-container dark-mode">
       <h1>Weapons Sheet — UI & Filter</h1>
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -287,7 +294,7 @@ export default function WeaponsSheetApp() {
         </table>
       </div>
 
-      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#555' }}>
+      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#aaa' }}>
         Notes: paste the CSV exported from your sheet or rely on auto-fetch. Filters and sorting remain functional. Auto-fetch occurs every 10 minutes.
       </div>
     </div>
